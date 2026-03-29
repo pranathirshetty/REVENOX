@@ -11,11 +11,13 @@ import {
   Settings,
   HelpCircle,
   Briefcase,
+  BarChart3,
 } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/deals", label: "Deals", icon: Briefcase },
+  { href: "/analytics", label: "Analytics", icon: BarChart3 },
 ];
 
 export default function Sidebar() {
