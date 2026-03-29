@@ -1,332 +1,323 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useEffect, useState } from "react";
 import {
+  Briefcase,
   Search,
-  Filter,
-  Building2,
-  User,
-  Clock,
-  Sparkles,
-  ArrowUpDown,
-  ChevronRight,
+  Plus,
+  Loader2,
+  AlertCircle,
+  TrendingUp,
   DollarSign,
 } from "lucide-react";
 import Badge from "../components/Badge";
-import {
-  deals,
-  formatCurrency,
-  getStageLabel,
-  timeAgo,
-} from "@/lib/mock-data";
-import type { Deal, InterestLevel, DealStage } from "@/lib/types";
+import type { Deal } from "@/lib/types";
 
-function getInterestBadge(level: InterestLevel) {
-  const map: Record<InterestLevel, { variant: "red" | "yellow" | "blue"; label: string }> = {
-    hot: { variant: "red", label: "Hot" },
-    warm: { variant: "yellow", label: "Warm" },
-    cold: { variant: "blue", label: "Cold" },
-  };
-  const { variant, label } = map[level];
-  return <Badge variant={variant} dot>{label}</Badge>;
+// Helper to format currency
+function formatCurrency(amount: string | number) {
+  const num = Number(amount);
+  if (isNaN(num)) return "$0";
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(num);
 }
 
-function getStageBadge(stage: DealStage) {
-  const map: Record<string, { variant: "green" | "blue" | "yellow" | "red" | "gray"; label: string }> = {
-    new_lead: { variant: "blue", label: "New Lead" },
-    qualified: { variant: "blue", label: "Qualified" },
-    demo_scheduled: { variant: "yellow", label: "Demo Scheduled" },
-    proposal: { variant: "yellow", label: "Proposal" },
-    negotiation: { variant: "yellow", label: "Negotiation" },
-    closed_won: { variant: "green", label: "Closed Won" },
-    closed_lost: { variant: "red", label: "Closed Lost" },
-  };
-  const { variant, label } = map[stage] || { variant: "gray" as const, label: stage };
-  return <Badge variant={variant}>{label}</Badge>;
+// HubSpot's built-in default stages for their Sales pipeline
+const DEFAULT_STAGES = [
+  { value: "3422931680", label: "Appointment Scheduled" },
+  { value: "3422931681", label: "Qualified To Buy" },
+  { value: "3422931682", label: "Presentation Scheduled" },
+  { value: "3422931683", label: "Decision Maker Bought-In" },
+  { value: "3422931684", label: "Contract Sent" },
+  { value: "3422931685", label: "Closed Won" },
+  { value: "3422931686", label: "Closed Lost" },
+];
+
+function getStageVariant(stageValue: string) {
+  const label = getStageLabel(stageValue).toLowerCase();
+  if (label.includes("won") || label.includes("bought-in")) return "green";
+  if (label.includes("lost")) return "red";
+  if (label.includes("contract")) return "yellow";
+  return "blue";
 }
 
-function getStatusLabel(deal: Deal): { label: string; variant: "green" | "yellow" | "red" | "blue" | "gray" } {
-  if (deal.stage === "closed_won") return { label: "Won", variant: "green" };
-  if (deal.stage === "closed_lost") return { label: "Lost", variant: "red" };
-  if (deal.interestLevel === "hot") return { label: "Interested", variant: "green" };
-  if (deal.interestLevel === "warm") return { label: "Evaluating", variant: "yellow" };
-  if (deal.interestLevel === "cold") return { label: "Low Interest", variant: "gray" };
-  return { label: "Active", variant: "blue" };
+function getStageLabel(stageValue: string) {
+  const found = DEFAULT_STAGES.find((s) => s.value === stageValue);
+  return found ? found.label : stageValue || "New Deal";
 }
 
-export default function DealsListPage() {
+export default function DealsPage() {
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [stageFilter, setStageFilter] = useState("all");
-  const [interestFilter, setInterestFilter] = useState("all");
-  const [sortBy, setSortBy] = useState<"value" | "updated" | "confidence">("updated");
 
-  const filtered = deals
-    .filter((d) => {
-      const matchesSearch =
-        d.title.toLowerCase().includes(search.toLowerCase()) ||
-        d.company.name.toLowerCase().includes(search.toLowerCase()) ||
-        d.contact.name.toLowerCase().includes(search.toLowerCase());
-      const matchesStage = stageFilter === "all" || d.stage === stageFilter;
-      const matchesInterest = interestFilter === "all" || d.interestLevel === interestFilter;
-      return matchesSearch && matchesStage && matchesInterest;
-    })
-    .sort((a, b) => {
-      if (sortBy === "value") return b.value - a.value;
-      if (sortBy === "confidence") return b.aiConfidence - a.aiConfidence;
-      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-    });
+  // Add Deal Form State
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newDealName, setNewDealName] = useState("");
+  const [newDealAmount, setNewDealAmount] = useState("");
+  const [newDealStage, setNewDealStage] = useState(DEFAULT_STAGES[0].value);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const activeDeals = deals.filter((d) => d.stage !== "closed_won" && d.stage !== "closed_lost").length;
-  const wonDeals = deals.filter((d) => d.stage === "closed_won").length;
-  const lostDeals = deals.filter((d) => d.stage === "closed_lost").length;
+  const fetchDeals = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/deals");
+      const data = await res.json();
+      if (data.error) {
+        setError(data.error);
+      } else {
+        setDeals(data.deals || []);
+      }
+    } catch {
+      setError("Failed to load deals");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDeals();
+  }, []);
+
+  const handleAddDeal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDealName.trim()) return;
+
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      const res = await fetch("/api/deals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dealname: newDealName,
+          amount: newDealAmount,
+          dealstage: newDealStage,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        setSubmitError(data.error || "Failed to create deal");
+      } else {
+        // Success! Clear form and refetch deals
+        setNewDealName("");
+        setNewDealAmount("");
+        setNewDealStage(DEFAULT_STAGES[0].value);
+        setShowAddForm(false);
+        fetchDeals(); // Refresh the list
+      }
+    } catch {
+      setSubmitError("Network error. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const filteredDeals = deals.filter((d) =>
+    d.dealname.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
-    <div className="max-w-[1200px] mx-auto space-y-5 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    <div className="max-w-[1200px] mx-auto space-y-6 animate-fade-in">
+      {/* Header and Add Button */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1
-            className="text-2xl font-semibold tracking-tight"
-            style={{ color: "var(--text-primary)" }}
-          >
-            All Deals
+          <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text-primary)" }}>
+            Sales Deals
           </h1>
           <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
-            {deals.length} total · {activeDeals} active · {wonDeals} won · {lostDeals} lost
+            Manage and track your active pipeline. Synced with HubSpot CRM.
           </p>
         </div>
-      </div>
-
-      {/* Quick Stats */}
-      <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
         <button
-          onClick={() => setInterestFilter(interestFilter === "hot" ? "all" : "hot")}
-          className={`card p-3 text-center transition-all cursor-pointer ${interestFilter === "hot" ? "ring-2 ring-red-400" : ""}`}
+          onClick={() => setShowAddForm(!showAddForm)}
+          className="btn btn-primary"
         >
-          <p className="text-xs font-medium" style={{ color: "var(--text-light)" }}>🔥 Hot</p>
-          <p className="text-lg font-semibold text-red-500">
-            {deals.filter((d) => d.interestLevel === "hot" && d.stage !== "closed_won" && d.stage !== "closed_lost").length}
-          </p>
-        </button>
-        <button
-          onClick={() => setInterestFilter(interestFilter === "warm" ? "all" : "warm")}
-          className={`card p-3 text-center transition-all cursor-pointer ${interestFilter === "warm" ? "ring-2 ring-amber-400" : ""}`}
-        >
-          <p className="text-xs font-medium" style={{ color: "var(--text-light)" }}>🟡 Warm</p>
-          <p className="text-lg font-semibold text-amber-500">
-            {deals.filter((d) => d.interestLevel === "warm" && d.stage !== "closed_won" && d.stage !== "closed_lost").length}
-          </p>
-        </button>
-        <button
-          onClick={() => setInterestFilter(interestFilter === "cold" ? "all" : "cold")}
-          className={`card p-3 text-center transition-all cursor-pointer ${interestFilter === "cold" ? "ring-2 ring-blue-400" : ""}`}
-        >
-          <p className="text-xs font-medium" style={{ color: "var(--text-light)" }}>🧊 Cold</p>
-          <p className="text-lg font-semibold" style={{ color: "var(--blue-primary)" }}>
-            {deals.filter((d) => d.interestLevel === "cold" && d.stage !== "closed_won" && d.stage !== "closed_lost").length}
-          </p>
-        </button>
-        <button
-          onClick={() => setStageFilter(stageFilter === "closed_won" ? "all" : "closed_won")}
-          className={`card p-3 text-center transition-all cursor-pointer ${stageFilter === "closed_won" ? "ring-2 ring-emerald-400" : ""}`}
-        >
-          <p className="text-xs font-medium" style={{ color: "var(--text-light)" }}>✅ Won</p>
-          <p className="text-lg font-semibold text-emerald-500">{wonDeals}</p>
-        </button>
-        <button
-          onClick={() => setStageFilter(stageFilter === "closed_lost" ? "all" : "closed_lost")}
-          className={`card p-3 text-center transition-all cursor-pointer ${stageFilter === "closed_lost" ? "ring-2 ring-red-400" : ""}`}
-        >
-          <p className="text-xs font-medium" style={{ color: "var(--text-light)" }}>❌ Lost</p>
-          <p className="text-lg font-semibold text-red-500">{lostDeals}</p>
+          {showAddForm ? "Cancel" : <><Plus className="w-4 h-4 mr-1.5" /> Add Deal</>}
         </button>
       </div>
 
-      {/* Filters Row */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
-            style={{ color: "var(--text-light)" }}
-          />
-          <input
-            type="text"
-            placeholder="Search deals, companies, contacts..."
-            className="input pl-9"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-        <div className="relative">
-          <Filter
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
-            style={{ color: "var(--text-light)" }}
-          />
-          <select
-            value={stageFilter}
-            onChange={(e) => setStageFilter(e.target.value)}
-            className="input pl-9 pr-8 text-sm appearance-none cursor-pointer"
-            style={{ width: "170px" }}
-          >
-            <option value="all">All Stages</option>
-            <option value="new_lead">New Lead</option>
-            <option value="qualified">Qualified</option>
-            <option value="demo_scheduled">Demo Scheduled</option>
-            <option value="proposal">Proposal</option>
-            <option value="negotiation">Negotiation</option>
-            <option value="closed_won">Closed Won</option>
-            <option value="closed_lost">Closed Lost</option>
-          </select>
-        </div>
-        <div className="relative">
-          <ArrowUpDown
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
-            style={{ color: "var(--text-light)" }}
-          />
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as "value" | "updated" | "confidence")}
-            className="input pl-9 pr-8 text-sm appearance-none cursor-pointer"
-            style={{ width: "160px" }}
-          >
-            <option value="updated">Last Updated</option>
-            <option value="value">Deal Value</option>
-            <option value="confidence">AI Confidence</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Deals List */}
-      <div className="card overflow-hidden">
-        {/* Table Header */}
-        <div
-          className="hidden md:grid grid-cols-12 gap-3 px-5 py-3 text-xs font-medium uppercase tracking-wider"
-          style={{ background: "var(--background)", color: "var(--text-light)", borderBottom: "1px solid var(--border)" }}
-        >
-          <div className="col-span-3">Deal / Company</div>
-          <div className="col-span-2">Stage</div>
-          <div className="col-span-2">Interest</div>
-          <div className="col-span-1">Status</div>
-          <div className="col-span-1 text-right">Value</div>
-          <div className="col-span-1 text-center">AI</div>
-          <div className="col-span-1 text-right">Updated</div>
-          <div className="col-span-1"></div>
-        </div>
-
-        {/* Deal Rows */}
-        <div className="divide-y" style={{ borderColor: "var(--border)" }}>
-          {filtered.map((deal, i) => {
-            const status = getStatusLabel(deal);
-            return (
-              <Link
-                key={deal.id}
-                href={`/deals/${deal.id}`}
-                className={`block px-5 py-4 transition-colors hover:bg-black/[0.015] dark:hover:bg-white/[0.02] animate-fade-in stagger-${Math.min(i + 1, 6)}`}
-              >
-                {/* Mobile Layout */}
-                <div className="md:hidden space-y-2">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                        {deal.title}
-                      </p>
-                      <p className="text-xs mt-0.5" style={{ color: "var(--text-secondary)" }}>
-                        {deal.company.name} · {deal.contact.name}
-                      </p>
-                    </div>
-                    <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                      {formatCurrency(deal.value)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {getStageBadge(deal.stage)}
-                    {getInterestBadge(deal.interestLevel)}
-                    <Badge variant={status.variant}>{status.label}</Badge>
-                  </div>
-                </div>
-
-                {/* Desktop Layout */}
-                <div className="hidden md:grid grid-cols-12 gap-3 items-center">
-                  {/* Deal / Company */}
-                  <div className="col-span-3 flex items-center gap-3 min-w-0">
-                    <div
-                      className="w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center text-white text-xs font-semibold"
-                      style={{ background: deal.stage === "closed_won" ? "var(--success)" : deal.stage === "closed_lost" ? "var(--danger)" : "var(--navy-dark)" }}
-                    >
-                      {deal.company.name.charAt(0)}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
-                        {deal.title}
-                      </p>
-                      <p className="text-xs truncate mt-0.5" style={{ color: "var(--text-secondary)" }}>
-                        {deal.company.name} · {deal.contact.name}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Stage */}
-                  <div className="col-span-2">
-                    {getStageBadge(deal.stage)}
-                  </div>
-
-                  {/* Interest */}
-                  <div className="col-span-2">
-                    {getInterestBadge(deal.interestLevel)}
-                  </div>
-
-                  {/* Status */}
-                  <div className="col-span-1">
-                    <Badge variant={status.variant}>{status.label}</Badge>
-                  </div>
-
-                  {/* Value */}
-                  <div className="col-span-1 text-right">
-                    <p className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                      {formatCurrency(deal.value)}
-                    </p>
-                  </div>
-
-                  {/* AI Confidence */}
-                  <div className="col-span-1 flex justify-center">
-                    <div className="flex items-center gap-1">
-                      <Sparkles className="w-3.5 h-3.5" style={{ color: deal.aiConfidence >= 70 ? "var(--success)" : deal.aiConfidence >= 40 ? "var(--warning)" : "var(--text-light)" }} />
-                      <span
-                        className="text-sm font-medium"
-                        style={{ color: deal.aiConfidence >= 70 ? "var(--success)" : deal.aiConfidence >= 40 ? "var(--warning)" : "var(--text-light)" }}
-                      >
-                        {deal.aiConfidence}%
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Updated */}
-                  <div className="col-span-1 text-right">
-                    <span className="text-xs" style={{ color: "var(--text-light)" }}>
-                      {timeAgo(deal.updatedAt)}
-                    </span>
-                  </div>
-
-                  {/* Arrow */}
-                  <div className="col-span-1 flex justify-end">
-                    <ChevronRight className="w-4 h-4" style={{ color: "var(--text-light)" }} />
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
-
-          {filtered.length === 0 && (
-            <div className="p-12 text-center">
-              <Search className="w-10 h-10 mx-auto mb-3" style={{ color: "var(--text-light)" }} />
-              <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                No deals found matching your filters.
-              </p>
+      {/* Add Deal Form Panel */}
+      {showAddForm && (
+        <div className="card p-5 border-l-4" style={{ borderLeftColor: "var(--blue-primary)" }}>
+          <h2 className="text-lg font-semibold mb-4" style={{ color: "var(--text-primary)" }}>
+            Create New Deal
+          </h2>
+          {submitError && (
+            <div className="mb-4 p-3 bg-red-500/10 text-red-500 rounded-lg text-sm flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <span>{submitError}</span>
             </div>
           )}
+          <form onSubmit={handleAddDeal} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: "var(--text-secondary)" }}>
+                  DEAL NAME
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Acme Corp Expansion"
+                  className="input w-full"
+                  value={newDealName}
+                  onChange={(e) => setNewDealName(e.target.value)}
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: "var(--text-secondary)" }}>
+                  AMOUNT ($)
+                </label>
+                <input
+                  type="number"
+                  placeholder="e.g. 50000"
+                  className="input w-full"
+                  value={newDealAmount}
+                  onChange={(e) => setNewDealAmount(e.target.value)}
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1" style={{ color: "var(--text-secondary)" }}>
+                  STAGE
+                </label>
+                <select
+                  className="input w-full cursor-pointer"
+                  value={newDealStage}
+                  onChange={(e) => setNewDealStage(e.target.value)}
+                  disabled={isSubmitting}
+                >
+                  {DEFAULT_STAGES.map((stage) => (
+                    <option key={stage.value} value={stage.value}>
+                      {stage.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            
+            <div className="flex justify-end pt-2">
+              <button
+                type="submit"
+                className="btn btn-primary flex items-center min-w-[120px] justify-center"
+                disabled={isSubmitting || !newDealName.trim()}
+              >
+                {isSubmitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  "Create Deal"
+                )}
+              </button>
+            </div>
+          </form>
         </div>
+      )}
+
+      {/* Search Bar */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: "var(--text-light)" }} />
+        <input
+          type="text"
+          placeholder="Search deals by name..."
+          className="input pl-9 w-full"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
+
+      {/* Error State */}
+      {error && !loading && (
+        <div className="card p-6 text-center text-red-500">
+          <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-80" />
+          <p>{error}</p>
+        </div>
+      )}
+
+      {/* Deals Table */}
+      {loading ? (
+        <div className="card p-12 text-center">
+          <Loader2 className="w-8 h-8 mx-auto mb-3 animate-spin" style={{ color: "var(--blue-primary)" }} />
+          <p className="text-sm" style={{ color: "var(--text-secondary)" }}>Fetching deals from HubSpot...</p>
+        </div>
+      ) : !error && (
+        <div className="card overflow-hidden">
+          {/* Table Header */}
+          <div
+            className="hidden md:grid grid-cols-12 gap-3 px-5 py-3 text-xs font-medium uppercase tracking-wider"
+            style={{ background: "var(--background)", color: "var(--text-light)", borderBottom: "1px solid var(--border)" }}
+          >
+            <div className="col-span-5">Deal Name</div>
+            <div className="col-span-3">Amount</div>
+            <div className="col-span-4">Pipeline Stage</div>
+          </div>
+
+          {/* Deal Rows */}
+          <div className="divide-y" style={{ borderColor: "var(--border)" }}>
+            {filteredDeals.map((deal, i) => (
+              <div
+                key={deal.id}
+                className={`px-5 py-4 transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.03] animate-fade-in stagger-${Math.min((i % 10) + 1, 6)}`}
+              >
+                {/* Mobile View */}
+                <div className="md:hidden space-y-2">
+                  <p className="font-medium text-sm" style={{ color: "var(--text-primary)" }}>{deal.dealname}</p>
+                  <p className="text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>
+                    {formatCurrency(deal.amount)}
+                  </p>
+                  <div className="pt-1">
+                    <Badge variant={getStageVariant(deal.dealstage)}>
+                      {getStageLabel(deal.dealstage)}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Desktop View */}
+                <div className="hidden md:grid grid-cols-12 gap-3 items-center">
+                  <div className="col-span-5 flex items-center gap-3">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-500/10"
+                    >
+                      <Briefcase className="w-4 h-4 text-blue-500" />
+                    </div>
+                    <p className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
+                      {deal.dealname}
+                    </p>
+                  </div>
+                  <div className="col-span-3">
+                    <div className="flex items-center gap-1.5 font-semibold text-sm" style={{ color: "var(--text-primary)" }}>
+                      <DollarSign className="w-3.5 h-3.5" style={{ color: "var(--text-light)" }} />
+                      {formatCurrency(deal.amount).replace('$', '')}
+                    </div>
+                  </div>
+                  <div className="col-span-4">
+                    <Badge variant={getStageVariant(deal.dealstage)}>
+                      {getStageLabel(deal.dealstage)}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {filteredDeals.length === 0 && (
+              <div className="p-12 text-center">
+                <Briefcase className="w-10 h-10 mx-auto mb-3" style={{ color: "var(--text-light)", opacity: 0.5 }} />
+                <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                  {search ? "No deals match your search." : "No deals found in HubSpot."}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

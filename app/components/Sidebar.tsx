@@ -5,23 +5,17 @@ import { usePathname } from "next/navigation";
 import { useSidebar } from "./SidebarProvider";
 import {
   LayoutDashboard,
-  Kanban,
-  Users,
-  Activity,
   ChevronLeft,
   ChevronRight,
   Sparkles,
   Settings,
   HelpCircle,
-  FileText,
+  Briefcase,
 } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/pipeline", label: "Pipeline", icon: Kanban },
-  { href: "/deals", label: "Deals", icon: FileText },
-  { href: "/prospects", label: "Prospects", icon: Users },
-  { href: "/activity", label: "Activity Log", icon: Activity },
+  { href: "/deals", label: "Deals", icon: Briefcase },
 ];
 
 export default function Sidebar() {
@@ -65,7 +59,7 @@ export default function Sidebar() {
         </div>
       </nav>
 
-      {/* Bottom section */}
+      {/* Bottom */}
       <div className="px-0 py-3 border-t border-white/10">
         <Link href="#" className="sidebar-item" title={collapsed ? "Settings" : undefined}>
           <Settings className="icon" />
@@ -76,17 +70,12 @@ export default function Sidebar() {
           <span className="label">Help</span>
         </Link>
 
-        {/* Collapse toggle */}
         <button
           onClick={toggleSidebar}
           className="sidebar-item w-full mt-2"
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          {collapsed ? (
-            <ChevronRight className="icon" />
-          ) : (
-            <ChevronLeft className="icon" />
-          )}
+          {collapsed ? <ChevronRight className="icon" /> : <ChevronLeft className="icon" />}
           <span className="label">Collapse</span>
         </button>
       </div>
