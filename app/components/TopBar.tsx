@@ -6,7 +6,7 @@ import { Sun, Moon, Bell, Search, Menu } from "lucide-react";
 
 export default function TopBar() {
   const { theme, toggleTheme } = useTheme();
-  const { collapsed, toggleSidebar } = useSidebar();
+  const { toggleSidebar } = useSidebar();
 
   return (
     <header
@@ -26,19 +26,37 @@ export default function TopBar() {
           <Menu className="w-5 h-5" style={{ color: "var(--text-secondary)" }} />
         </button>
 
-        {/* Search */}
-        <div className="relative hidden sm:block">
-          <Search
-            className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
-            style={{ color: "var(--text-light)" }}
-          />
-          <input
-            type="text"
-            placeholder="Search deals, prospects..."
-            className="input pl-9 w-64 text-sm"
-            style={{ background: "var(--background)" }}
-          />
-        </div>
+        <form
+          className="hidden sm:flex items-center gap-2"
+          role="search"
+          onSubmit={(e) => e.preventDefault()}
+        >
+          <div
+            className="relative rounded-lg border overflow-hidden"
+            style={{ borderColor: "var(--border)", background: "var(--background)" }}
+          >
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+              style={{ color: "var(--text-light)" }}
+            />
+            <input
+              type="search"
+              placeholder="Search deals, contacts, companies..."
+              className="pl-9 pr-16 py-2.5 text-sm outline-none w-57.5 md:w-80 lg:w-105"
+              style={{ background: "transparent", color: "var(--text-primary)" }}
+              aria-label="Search"
+            />
+            <span
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-medium px-1.5 py-0.5 rounded"
+              style={{ background: "var(--surface)", color: "var(--text-light)", border: "1px solid var(--border)" }}
+            >
+              Ctrl K
+            </span>
+          </div>
+          <button type="submit" className="btn btn-secondary btn-sm">
+            Search
+          </button>
+        </form>
       </div>
 
       {/* Right side */}

@@ -66,27 +66,27 @@
 
 /* Dark mode */
 [data-theme="dark"] {
-  --background: #0f1117;
-  --background-dark: #0f1117;
-  --surface: #1a1d27;
+  --background: #0b1220;
+  --background-dark: #090f1a;
+  --surface: #121b2b;
 
-  --navy-dark: #0d1526;
-  --navy-medium: #162240;
+  --navy-dark: #091226;
+  --navy-medium: #10203e;
 
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-light: #64748b;
+  --text-primary: #e6edf7;
+  --text-secondary: #a4b2c7;
+  --text-light: #70829e;
 
-  --border: #2a2e3b;
-  --border-light: #1e2230;
+  --border: #233147;
+  --border-light: #1a2638;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.2);
   --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.4), 0 4px 6px rgba(0, 0, 0, 0.2);
 
-  --blue-lighter: #1e293b;
-  --blue-light: #1e3a5f;
+  --blue-lighter: #14253d;
+  --blue-light: #1a3f68;
 }
 
 @theme inline {
@@ -244,6 +244,11 @@ body {
 
 .card:hover {
   box-shadow: var(--shadow);
+}
+
+[data-theme="dark"] .card {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 84%, #0f1a2d), var(--surface));
+  border-color: color-mix(in srgb, var(--border) 92%, #37517a);
 }
 
 .card-interactive {
