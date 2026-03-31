@@ -13,7 +13,6 @@ import {
   Mail,
   Phone,
   Briefcase,
-  TrendingUp,
   Brain,
   Gauge,
   Target,
@@ -22,6 +21,15 @@ import {
 import Badge from "../../components/Badge";
 import type { Lead, ChatMessage, AIResponse } from "@/lib/types";
 import { mockLeads } from "@/lib/mock-data";
+
+type ChatErrorResponse = {
+  error?: string;
+  detail?: string;
+  kind?: string;
+  retryAfterSeconds?: number;
+};
+
+type GmailStatus = { connected: boolean; email?: string };
 
 function getInterestColor(score: number): string {
   if (score >= 70) return "#10B981";
@@ -65,6 +73,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   });
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
+
   // Fetch lead info
   useEffect(() => {
     async function fetchLead() {
@@ -81,6 +91,31 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     }
     fetchLead();
   }, [id]);
+
+  useEffect(() => {
+    async function fetchGmailStatus() {
+      try {
+        const res = await fetch("/api/gmail/status", { cache: "no-store" });
+        const data = (await res.json()) as GmailStatus;
+        setGmailStatus(data);
+      } catch {
+        setGmailStatus({ connected: false });
+      }
+    }
+    fetchGmailStatus();
+  }, []);
+
+  const buildMailHref = () => {
+    const params = new URLSearchParams();
+    if (lead?.email) params.set("to", lead.email);
+    if (lead?.name) params.set("leadName", lead.name);
+    if (lead?.company) params.set("leadCompany", lead.company);
+    const qs = params.toString();
+    return qs ? `/mail?${qs}` : "/mail";
+  };
+
+  const mailHref = buildMailHref();
+  const connectGmailUrl = `/api/gmail/auth?state=${encodeURIComponent(mailHref)}`;
 
   // Auto-scroll chat
   useEffect(() => {
@@ -113,22 +148,53 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         }),
       });
 
-      const data: AIResponse = await res.json();
+      const data = (await res.json()) as unknown;
+      const hasErrorField =
+        typeof data === "object" && data !== null && "error" in data;
+
+      if (!res.ok || hasErrorField) {
+        const payload = (data || {}) as ChatErrorResponse;
+        const retryAfterSeconds =
+          typeof payload.retryAfterSeconds === "number"
+            ? payload.retryAfterSeconds
+            : undefined;
+        const retryHint = retryAfterSeconds
+          ? ` Please retry in ~${Math.ceil(retryAfterSeconds)}s.`
+          : "";
+        const detail = payload.detail || payload.error || "Chat failed";
+        const friendly =
+          res.status === 401
+            ? "Gemini API key is missing or not loaded. Add GEMINI_API_KEY to the root .env.local and restart the dev server."
+            : res.status === 429
+            ? `Gemini quota/rate limit hit.${retryHint} Your AI Studio project is reporting a free-tier limit of 0 for this model. Use a different Google project/account that has non-zero quota or enable billing for the project.`
+            : `Chat failed (${res.status}). ${detail}`;
+
+        const aiMsg: ChatMessage = {
+          id: `msg-${Date.now()}-ai`,
+          role: "salesperson",
+          content: friendly,
+          timestamp: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, aiMsg]);
+        return;
+      }
+
+      const okData = data as AIResponse;
 
       const aiMsg: ChatMessage = {
         id: `msg-${Date.now()}-ai`,
         role: "salesperson",
-        content: data.reply,
+        content: okData.reply,
         timestamp: new Date().toISOString(),
         analysis: {
-          interest: data.scores.interest,
-          tone: data.scores.tone,
-          intent: data.scores.intent,
+          interest: okData.scores.interest,
+          tone: okData.scores.tone,
+          intent: okData.scores.intent,
         },
       };
 
       setMessages((prev) => [...prev, aiMsg]);
-      setScores(data.scores);
+      setScores(okData.scores);
     } catch {
       const fallback: ChatMessage = {
         id: `msg-${Date.now()}-ai`,
@@ -391,6 +457,36 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             </div>
           </div>
 
+          {/* Gmail Follow-up */}
+          <div className="card p-5 space-y-3">
+            <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+              Gmail Follow-up
+            </h3>
+
+            {!gmailStatus?.connected ? (
+              <div className="space-y-2">
+                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                  Connect a Gmail inbox to send emails and analyze replies.
+                </p>
+                <a href={connectGmailUrl} className="btn btn-primary w-full justify-center">
+                  Connect Gmail
+                </a>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                  Connected{gmailStatus.email ? `: ${gmailStatus.email}` : ""}
+                </p>
+                <Link href={mailHref} className="btn btn-primary w-full justify-center">
+                  Open Mail Page
+                </Link>
+                <p className="text-[11px]" style={{ color: "var(--text-light)" }}>
+                  Send an email, then sync the customer’s reply for AI analysis.
+                </p>
+              </div>
+            )}
+          </div>
+
           {/* Quick Tips */}
           <div className="card p-5">
             <h3 className="text-sm font-semibold mb-3" style={{ color: "var(--text-primary)" }}>
@@ -407,7 +503,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                 <button
                   key={suggestion}
                   onClick={() => setInput(suggestion)}
-                  className="w-full text-left text-xs p-2.5 rounded-lg transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.05]"
+                  className="w-full text-left text-xs p-2.5 rounded-lg transition-colors hover:bg-black/3 dark:hover:bg-white/5"
                   style={{ color: "var(--text-secondary)", border: "1px solid var(--border-light)" }}
                 >
                   &quot;{suggestion}&quot;
@@ -424,7 +520,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
 function InfoRow({ icon: Icon, label, value }: { icon: typeof User; label: string; value: string }) {
   return (
     <div className="flex items-center gap-3">
-      <Icon className="w-4 h-4 flex-shrink-0" style={{ color: "var(--text-light)" }} />
+      <Icon className="w-4 h-4 shrink-0" style={{ color: "var(--text-light)" }} />
       <div className="flex-1 min-w-0">
         <p className="text-xs" style={{ color: "var(--text-light)" }}>{label}</p>
         <p className="text-sm truncate" style={{ color: "var(--text-primary)" }}>{value}</p>

@@ -7,7 +7,6 @@ import {
   Plus,
   Loader2,
   AlertCircle,
-  TrendingUp,
   DollarSign,
 } from "lucide-react";
 import Badge from "../components/Badge";

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateGeminiJson, parseRetryAfterSeconds } from "@/lib/server/gemini";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,21 +12,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      // Fallback mock response when no API key
-      return NextResponse.json({
-        reply: `Thank you for your interest! I'd be happy to help you with that. Let me get the right information for you about our solutions. Would you like to schedule a quick call to discuss further?`,
-        scores: {
-          interest: 65,
-          tone: "Neutral",
-          intent: "Information Seeking",
-          engagement: 50,
-          summary: "Lead is showing initial interest and exploring options.",
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        {
+          error:
+            "GEMINI_API_KEY is not configured. Add it to the root .env.local and restart the dev server.",
         },
-      });
+        { status: 401 }
+      );
     }
-
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
     const historyContext = (chatHistory || [])
       .slice(-6) // last 6 messages for context
@@ -61,29 +57,26 @@ RESPOND IN THIS EXACT JSON FORMAT (no markdown, no backticks, just raw JSON):
   }
 }`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
-
-    // Parse the JSON — handle cases where Gemini wraps in ```json
-    let cleanText = text;
-    if (cleanText.startsWith("```")) {
-      cleanText = cleanText.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
-    }
-
-    const parsed = JSON.parse(cleanText);
-
+    const parsed = await generateGeminiJson({ apiKey, prompt });
     return NextResponse.json(parsed);
   } catch (err) {
     console.error("Chat API error:", err);
-    return NextResponse.json({
-      reply: "I appreciate your message! Let me look into that for you. Could you tell me a bit more about what you're looking for?",
-      scores: {
-        interest: 50,
-        tone: "Neutral",
-        intent: "Information Seeking",
-        engagement: 40,
-        summary: "Conversation in progress.",
+
+    const detail = err instanceof Error ? err.message : "Unknown error";
+    const retryAfterSeconds = parseRetryAfterSeconds(detail);
+    const isQuotaOrRateLimit =
+      detail.includes("[429") ||
+      /too\s+many\s+requests/i.test(detail) ||
+      /quota\s+exceeded/i.test(detail);
+
+    return NextResponse.json(
+      {
+        error: "Chat request failed",
+        kind: isQuotaOrRateLimit ? "rate_limit" : "unknown",
+        detail,
+        ...(retryAfterSeconds ? { retryAfterSeconds } : {}),
       },
-    });
+      { status: isQuotaOrRateLimit ? 429 : 500 }
+    );
   }
 }

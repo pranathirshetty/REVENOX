@@ -11,13 +11,15 @@ import {
   Settings,
   HelpCircle,
   Briefcase,
+  Users,
   BarChart3,
+  SendHorizontal,
 } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/leads", label: "Leads", icon: Users },
   { href: "/deals", label: "Deals", icon: Briefcase },
-  { href: "/analytics", label: "Analytics", icon: BarChart3 },
 ];
 
 export default function Sidebar() {
@@ -63,11 +65,20 @@ export default function Sidebar() {
 
       {/* Bottom */}
       <div className="px-0 py-3 border-t border-white/10">
-        <Link href="#" className="sidebar-item" title={collapsed ? "Settings" : undefined}>
+        <Link
+          href="#"
+          className="sidebar-item"
+          title={collapsed ? "Settings" : undefined}
+        >
           <Settings className="icon" />
           <span className="label">Settings</span>
         </Link>
-        <Link href="#" className="sidebar-item" title={collapsed ? "Help" : undefined}>
+
+        <Link
+          href="#"
+          className="sidebar-item"
+          title={collapsed ? "Help" : undefined}
+        >
           <HelpCircle className="icon" />
           <span className="label">Help</span>
         </Link>
@@ -77,7 +88,11 @@ export default function Sidebar() {
           className="sidebar-item w-full mt-2"
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          {collapsed ? <ChevronRight className="icon" /> : <ChevronLeft className="icon" />}
+          {collapsed ? (
+            <ChevronRight className="icon" />
+          ) : (
+            <ChevronLeft className="icon" />
+          )}
           <span className="label">Collapse</span>
         </button>
       </div>
